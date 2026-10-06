@@ -1,0 +1,124 @@
+name: mirror-sync
+
+# Nightly git sync: pulls latest from upstream, updates the `upstream` branch
+# (pure mirror), then rebuilds `main` (patched) with our overlay files and
+# the image: field rewrites applied on top.
+#
+# Differs from the Music Assistant / Matter Hub mirrors in one way: those
+# upstreams are single-product store repos, so `main` can be the whole tree.
+# This mirror's upstream carries add-ons we do not republish, so `main` is
+# pruned to KEEP_SUBDIRS (see .mirror/config.env). The `upstream` branch stays
+# a complete untouched mirror, so nothing is lost if we later want more.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (with full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Snapshot overlay files
+        run: |
+          set -e
+          mkdir -p /tmp/overlay
+          # Copy overlay (files we add on top of upstream). repository.yaml is
+          # ours too, because pruning drops the upstream store manifest.
+          [ -d .github ]          && cp -a .github         /tmp/overlay/
+          [ -d .mirror ]          && cp -a .mirror         /tmp/overlay/
+          [ -f README.md ]        && cp -a README.md       /tmp/overlay/
+          [ -f repository.yaml ]  && cp -a repository.yaml /tmp/overlay/
+          echo "Overlay snapshot:"; find /tmp/overlay -maxdepth 3 -type f
+
+      - name: Load mirror config
+        run: |
+          set -a
+          . .mirror/config.env
+          set +a
+          echo "UPSTREAM_URL=$UPSTREAM_URL"                 >> $GITHUB_ENV
+          echo "UPSTREAM_BRANCH=$UPSTREAM_BRANCH"           >> $GITHUB_ENV
+          echo "MIRROR_IMAGE_PREFIX=$MIRROR_IMAGE_PREFIX"   >> $GITHUB_ENV
+          echo "KEEP_SUBDIRS=$KEEP_SUBDIRS"                 >> $GITHUB_ENV
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch upstream --tags --prune
+
+      - name: Update `upstream` mirror branch
+        run: |
+          git branch -f upstream "upstream/$UPSTREAM_BRANCH"
+          git push origin upstream --force
+
+      - name: Push upstream tags
+        run: |
+          git push origin --tags --force
+
+      - name: Rebuild main = upstream + prune + overlay + image patches
+        run: |
+          set -e
+          git checkout -B main "upstream/$UPSTREAM_BRANCH"
+
+          # Prune to the add-on(s) we republish. Everything else in the
+          # upstream tree is dropped from `main` only; `upstream` keeps it all.
+          if [ -n "${KEEP_SUBDIRS:-}" ]; then
+            echo "Pruning main to: $KEEP_SUBDIRS"
+            for path in $(ls -A); do
+              [ "$path" = ".git" ] && continue
+              keep=0
+              for k in $KEEP_SUBDIRS; do
+                [ "$path" = "$k" ] && keep=1
+              done
+              if [ "$keep" = "0" ]; then
+                echo "  - dropping $path"
+                rm -rf -- "$path"
+              fi
+            done
+            # Fail loudly rather than publishing an empty store.
+            for k in $KEEP_SUBDIRS; do
+              if [ ! -e "$k" ]; then
+                echo "::error::KEEP_SUBDIRS entry '$k' not found in upstream tree — upstream may have renamed or removed it"
+                exit 1
+              fi
+            done
+          fi
+
+          # Re-apply overlay
+          cp -a /tmp/overlay/. .
+          # Patch image: fields
+          python3 .mirror/patch-image.py
+          # Refresh last-sync stamp
+          {
+            echo "last_sync: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "upstream_url: $UPSTREAM_URL"
+            echo "upstream_branch: $UPSTREAM_BRANCH"
+            echo "upstream_commit: $(git rev-parse upstream/$UPSTREAM_BRANCH)"
+            echo "mirror_image_prefix: $MIRROR_IMAGE_PREFIX"
+            echo "keep_subdirs: $KEEP_SUBDIRS"
+          } > .mirror/last-sync.yaml
+
+      - name: Commit & force-push main
+        run: |
+          git config user.email "woowtech-mirror-bot@designsmart.com.tw"
+          git config user.name  "WOOWTECH Mirror Bot"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes; skipping commit."
+          else
+            git commit -m "[bot] mirror sync $(date -u +%Y-%m-%d) — ${UPSTREAM_URL##*/}@${UPSTREAM_BRANCH}"
+          fi
+          git push origin main --force

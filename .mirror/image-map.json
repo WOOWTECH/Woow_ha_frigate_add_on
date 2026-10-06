@@ -1,0 +1,20 @@
+{
+  "upstream_url": "https://github.com/blakeblackshear/frigate-hass-addons",
+  "upstream_branch": "main",
+  "mirror_image_prefix": "ghcr.io/woowtech/ha-mirror-",
+  "addons": [
+    {
+      "dir": "frigate",
+      "slug": "frigate",
+      "name": "Frigate",
+      "upstream_image": "ghcr.io/blakeblackshear/frigate",
+      "new_image": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate",
+      "version": "0.18.0",
+      "arches": [
+        "aarch64",
+        "amd64"
+      ],
+      "already_patched": false
+    }
+  ]
+}
