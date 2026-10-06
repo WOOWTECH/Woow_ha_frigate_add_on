@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "repository": "WOOWTECH/Woow_ha_frigate_add_on",
+  "components": {
+    "frigate": {
+      "id": "frigate",
+      "name": "Frigate",
+      "version": "0.18.0",
+      "repository": "WOOWTECH/Woow_ha_frigate_add_on",
+      "source_sha": "886e9ad1a991e839e64ed4f5f185db817e174515",
+      "source_path": "frigate",
+      "config_file": "config.yaml",
+      "config_sha256": "sha256:828f5c454cbb99217257b7805619f7d18627512d742643374753395461d20fbf",
+      "archive_sha256": "sha256:cf015cee9a5023267022b0cdd636ab6a9e225073b67e616676488c9642ef651e",
+      "context_fingerprint": "sha256:ccb380de82e1a68f2063ea02b33c41568a2253ae2a35655b69171b03ad445777",
+      "material_fingerprint": "sha256:781ebd8ebd0ca816ffa9ac9bd92b4933803dce931cc3541b8f73cc55be623544",
+      "architectures": [
+        "amd64",
+        "aarch64"
+      ],
+      "config": {
+        "name": "Frigate",
+        "version": "0.18.0",
+        "breaking_versions": [
+          "0.18.0",
+          "0.17.0",
+          "0.16.0",
+          "0.15.0",
+          "0.14.0"
+        ],
+        "panel_icon": "mdi:cctv",
+        "panel_title": "Frigate",
+        "slug": "frigate",
+        "description": "NVR with realtime local object detection for IP cameras",
+        "url": "https://github.com/blakeblackshear/frigate",
+        "image": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate",
+        "startup": "application",
+        "boot": "auto",
+        "init": false,
+        "webui": "http://[HOST]:[PORT:5000]/",
+        "watchdog": "http://[HOST]:[PORT:5000]/",
+        "ingress": true,
+        "ingress_port": 5000,
+        "ingress_entry": "/",
+        "panel_admin": false,
+        "homeassistant_api": true,
+        "hassio_api": true,
+        "ports": {
+          "8555/tcp": 8555,
+          "8555/udp": 8555,
+          "8554/tcp": null,
+          "8971/tcp": null,
+          "5000/tcp": null,
+          "1984/tcp": null,
+          "1935/tcp": null
+        },
+        "ports_description": {
+          "8555/tcp": "WebRTC over tcp",
+          "8555/udp": "WebRTC over udp",
+          "8554/tcp": "RTSP Restream",
+          "8971/tcp": "Authenticated Web interface",
+          "5000/tcp": "Unauthenticated Web interface (not required for Home Assistant Ingress)",
+          "1984/tcp": "go2rtc API"
+        },
+        "host_network": false,
+        "devices": [
+          "/dev/dri/renderD128",
+          "/dev/apex_0",
+          "/dev/apex_1",
+          "/dev/apex_2",
+          "/dev/apex_3",
+          "/dev/dri/card0",
+          "/dev/vchiq",
+          "/dev/video10",
+          "/dev/video0",
+          "/dev/hailo0",
+          "/dev/hailo1"
+        ],
+        "usb": true,
+        "video": true,
+        "tmpfs": true,
+        "full_access": false,
+        "privileged": [
+          "PERFMON"
+        ],
+        "schema": {
+          "plus_api_key": "password?",
+          "go2rtc_allow_arbitrary_exec": "str?"
+        },
+        "services": [
+          "mqtt:want"
+        ],
+        "arch": [
+          "amd64",
+          "aarch64"
+        ],
+        "map": [
+          "media:rw",
+          "addon_config:rw",
+          "homeassistant_config:rw",
+          "ssl"
+        ]
+      },
+      "source_build_supported": false,
+      "images": {
+        "amd64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.0",
+          "index_digest": "sha256:9678a83a76e4730ac7d9ea7428370e32ae656d6b312aaad30d6c69f3fef14d35",
+          "digest": "sha256:b1f339cf08ae9148b0fac4295cf59f8e158455f6e72d29af32b773a3d8129851",
+          "source_revision": null
+        },
+        "aarch64": {
+          "reference": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate:0.18.0",
+          "index_digest": "sha256:9678a83a76e4730ac7d9ea7428370e32ae656d6b312aaad30d6c69f3fef14d35",
+          "digest": "sha256:258b5be305a38376fbd3c61020a2cdb61433174ca38088d53d9b5c377aa14b70",
+          "source_revision": null
+        }
+      },
+      "delivery": "published-image",
+      "validation": "manifest+architecture-images+configured-CI",
+      "publisher_run_id": "37410203014",
+      "channel": "stable"
+    }
+  }
+}
