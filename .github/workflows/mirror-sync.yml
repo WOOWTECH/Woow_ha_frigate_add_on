@@ -4,6 +4,13 @@ name: mirror-sync
 # (pure mirror), then rebuilds `main` (patched) with our overlay files and
 # the image: field rewrites applied on top.
 #
+# `main` only moves forward. Each sync rebuilds the tree from upstream and
+# commits it on top of the previous `main`; it is never force-pushed.
+# Woow_HA_App_Store pins published add-on snapshots by commit and accepts a
+# new snapshot only when it descends from the one it already has, so a
+# rewritten `main` would block every later release. The `upstream` branch
+# is still a force-updated pure mirror.
+#
 # Differs from the Music Assistant / Matter Hub mirrors in one way: those
 # upstreams are single-product store repos, so `main` can be the whole tree.
 # This mirror's upstream carries add-ons we do not republish, so `main` is
@@ -71,7 +78,10 @@ jobs:
       - name: Rebuild main = upstream + prune + overlay + image patches
         run: |
           set -e
-          git checkout -B main "upstream/$UPSTREAM_BRANCH"
+          # Keep `main` checked out and replace its index and work tree with
+          # upstream's tree, so the commit below sits on top of the old main.
+          git checkout main
+          git read-tree --reset -u "upstream/$UPSTREAM_BRANCH"
 
           # Prune to the add-on(s) we republish. Everything else in the
           # upstream tree is dropped from `main` only; `upstream` keeps it all.
@@ -111,7 +121,7 @@ jobs:
             echo "keep_subdirs: $KEEP_SUBDIRS"
           } > .mirror/last-sync.yaml
 
-      - name: Commit & force-push main
+      - name: Commit & push main
         run: |
           git config user.email "woowtech-mirror-bot@designsmart.com.tw"
           git config user.name  "WOOWTECH Mirror Bot"
@@ -121,4 +131,4 @@ jobs:
           else
             git commit -m "[bot] mirror sync $(date -u +%Y-%m-%d) — ${UPSTREAM_URL##*/}@${UPSTREAM_BRANCH}"
           fi
-          git push origin main --force
+          git push origin main
