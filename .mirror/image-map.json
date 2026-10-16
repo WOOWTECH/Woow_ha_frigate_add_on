@@ -9,7 +9,7 @@
       "name": "Frigate",
       "upstream_image": "ghcr.io/blakeblackshear/frigate",
       "new_image": "ghcr.io/woowtech/ha-mirror-ghcr-io-blakeblackshear-frigate",
-      "version": "0.18.1",
+      "version": "0.18.2",
       "arches": [
         "aarch64",
         "amd64"
