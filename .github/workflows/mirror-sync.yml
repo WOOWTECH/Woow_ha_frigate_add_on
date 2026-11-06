@@ -1,21 +1,29 @@
 name: mirror-sync
 
-# Nightly git sync: pulls latest from upstream, updates the `upstream` branch
-# (pure mirror), then rebuilds `main` (patched) with our overlay files and
+# Nightly git sync: pulls latest from upstream, adds a snapshot of it to the
+# `upstream` branch, then rebuilds `main` (patched) with our overlay files and
 # the image: field rewrites applied on top.
 #
 # `main` only moves forward. Each sync rebuilds the tree from upstream and
 # commits it on top of the previous `main`; it is never force-pushed.
 # Woow_HA_App_Store pins published add-on snapshots by commit and accepts a
 # new snapshot only when it descends from the one it already has, so a
-# rewritten `main` would block every later release. The `upstream` branch
-# is still a force-updated pure mirror.
+# rewritten `main` would block every later release.
+#
+# Upstream's `.github` folder (its CI configuration) is not copied anywhere.
+# GitHub does not let this workflow's token push workflow files, so an
+# upstream change to its workflow files made the exact mirror fail every
+# night (jellyfin from 2026-10-22). The `upstream` branch therefore holds
+# upstream's source without `.github`, one snapshot commit per change, and
+# is never force-pushed. Upstream tags are no longer copied either: they
+# point at upstream commits, `.github` included. Same steps as the dnsmasq
+# mirror (a30e5da).
 #
 # Differs from the Music Assistant / Matter Hub mirrors in one way: those
 # upstreams are single-product store repos, so `main` can be the whole tree.
 # This mirror's upstream carries add-ons we do not republish, so `main` is
-# pruned to KEEP_SUBDIRS (see .mirror/config.env). The `upstream` branch stays
-# a complete untouched mirror, so nothing is lost if we later want more.
+# pruned to KEEP_SUBDIRS (see .mirror/config.env). The `upstream` branch is
+# not pruned (it lacks only `.github`), so nothing is lost if we later want more.
 
 on:
   schedule:
@@ -61,19 +69,35 @@ jobs:
           echo "MIRROR_IMAGE_PREFIX=$MIRROR_IMAGE_PREFIX"   >> $GITHUB_ENV
           echo "KEEP_SUBDIRS=$KEEP_SUBDIRS"                 >> $GITHUB_ENV
 
-      - name: Fetch upstream
+      - name: Fetch upstream source and tags
         run: |
+          set -euo pipefail
+          git remote remove upstream 2>/dev/null || true
           git remote add upstream "$UPSTREAM_URL"
-          git fetch upstream --tags --prune
+          git fetch upstream --tags --prune --force
 
-      - name: Update `upstream` mirror branch
+      - name: Update upstream source snapshot branch
         run: |
-          git branch -f upstream "upstream/$UPSTREAM_BRANCH"
-          git push origin upstream --force
-
-      - name: Push upstream tags
-        run: |
-          git push origin --tags --force
+          set -euo pipefail
+          # Upstream's tree without `.github`, built in a scratch index.
+          export GIT_INDEX_FILE="$RUNNER_TEMP/upstream-snapshot.index"
+          rm -f "$GIT_INDEX_FILE"
+          git read-tree "upstream/$UPSTREAM_BRANCH"
+          git rm -r -q --cached --ignore-unmatch .github
+          tree=$(git write-tree)
+          unset GIT_INDEX_FILE
+          parent=$(git rev-parse --verify -q refs/remotes/origin/upstream || true)
+          if [ -n "$parent" ] && [ "$(git rev-parse "$parent^{tree}")" = "$tree" ]; then
+            echo "Upstream snapshot unchanged."
+            exit 0
+          fi
+          upstream_commit=$(git rev-parse "upstream/$UPSTREAM_BRANCH")
+          export GIT_AUTHOR_NAME="WOOWTECH Mirror Bot" GIT_COMMITTER_NAME="WOOWTECH Mirror Bot"
+          export GIT_AUTHOR_EMAIL="woowtech-mirror-bot@designsmart.com.tw" GIT_COMMITTER_EMAIL="woowtech-mirror-bot@designsmart.com.tw"
+          commit=$(git commit-tree "$tree" ${parent:+-p "$parent"} \
+            -m "[bot] upstream snapshot ${UPSTREAM_URL##*/}@${upstream_commit} without .github")
+          # A normal push: the snapshot sits on top of the previous one.
+          git push origin "$commit:refs/heads/upstream"
 
       - name: Rebuild main = upstream + prune + overlay + image patches
         run: |
@@ -82,6 +106,8 @@ jobs:
           # upstream's tree, so the commit below sits on top of the old main.
           git checkout main
           git read-tree --reset -u "upstream/$UPSTREAM_BRANCH"
+          # Upstream's CI configuration is not part of the add-on.
+          rm -rf .github
 
           # Prune to the add-on(s) we republish. Everything else in the
           # upstream tree is dropped from `main` only; `upstream` keeps it all.
