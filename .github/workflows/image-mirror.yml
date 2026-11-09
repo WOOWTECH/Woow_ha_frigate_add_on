@@ -1,7 +1,14 @@
 name: image-mirror
 
-# Nightly image sync: reads .mirror/image-map.json (produced by patch-image.py
-# during mirror-sync) and copies each upstream image to ghcr.io/woowtech/ha-mirror-*.
+# Image copy: reads .mirror/image-map.json (produced by patch-image.py during
+# mirror-sync) and copies each upstream image to ghcr.io/woowtech/ha-mirror-*.
+#
+# It has no schedule of its own (pipeline #91): mirror-sync calls it right
+# after the sync, on the commit it pushed, so the upgrade comparison that
+# follows pulls the very image users would install. A failed copy stops
+# mirror-sync before the comparison and the Release. Copying an image ships
+# nothing: the Store installs only versions with a formal Release. It can
+# still be run by hand (workflow_dispatch, on main).
 #
 # Two image patterns are supported (matching HA Supervisor semantics):
 #   1. `image: foo/bar/{arch}` — per-arch tag. Substitute {arch} for each
@@ -10,8 +17,16 @@ name: image-mirror
 #      with `skopeo --all` and let the manifest list carry all arches.
 
 on:
-  schedule:
-    - cron: '47 4 * * *'
+  workflow_call:
+    inputs:
+      sha:
+        description: 'Commit whose .mirror/image-map.json is copied (mirror-sync passes the commit it pushed)'
+        type: string
+        required: true
+      only_addon_dir:
+        description: 'Optional: mirror only this addon dir (blank = all)'
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       only_addon_dir:
@@ -31,10 +46,10 @@ jobs:
   mirror-images:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout the commit to mirror
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.sha || 'main' }}
 
       - name: Install skopeo + jq
         run: |
@@ -48,7 +63,7 @@ jobs:
 
       - name: Read image map + iterate
         env:
-          ONLY: ${{ github.event.inputs.only_addon_dir }}
+          ONLY: ${{ inputs.only_addon_dir }}
         run: |
           set -euo pipefail
           if [ ! -f .mirror/image-map.json ]; then

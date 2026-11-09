@@ -24,6 +24,28 @@ name: mirror-sync
 # This mirror's upstream carries add-ons we do not republish, so `main` is
 # pruned to KEEP_SUBDIRS (see .mirror/config.env). The `upstream` branch is
 # not pruned (it lacks only `.github`), so nothing is lost if we later want more.
+#
+# The App Store ships only formal Releases (registry ref_policy: release since
+# pipeline #172; the first one, v0.18.2, was created from main without a
+# comparison). Nothing ships unchecked (pipeline #91). After the sync, in this
+# order, each job waiting for the one before it:
+#   1. image-mirror copies the images of the pushed commit to GHCR (a failed
+#      copy stops the run);
+#   2. the Store's upgrade comparison (sha mode) compares the add-on, when its
+#      version differs from its latest formal Release, with that Release:
+#      categories 1-4, both sides the GHCR image users install;
+#   3. the Store's Release workflow creates the v<version> Release only when
+#      the add-on passed (`components`). A failed add-on fails this run.
+# On the schedule, steps 1-3 run only when the sync pushed a new commit.
+# workflow_dispatch always runs them, so after adding a declaration a manual
+# run checks the same upstream version again.
+#
+# Overlay files for the upgrade comparison live in .mirror/<add-on dir>/:
+# upgrade-check/ (hooks, settings) and upgrade-notes.yaml (declared breaking
+# changes, with the migration). The rebuild copies them into <add-on dir>/,
+# where the Store tools read them. A breaking upstream change that is
+# intended: declare it in .mirror/<add-on dir>/upgrade-notes.yaml, commit,
+# then run this workflow by hand; the declaration goes into the Release notes.
 
 on:
   schedule:
@@ -40,6 +62,9 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.push.outputs.sha }}
+      changed: ${{ steps.push.outputs.changed }}
     steps:
       - name: Checkout main (with full history)
         uses: actions/checkout@v4
@@ -135,6 +160,25 @@ jobs:
 
           # Re-apply overlay
           cp -a /tmp/overlay/. .
+          # Upgrade comparison hooks and declarations (pipeline #91):
+          # .mirror/<add-on dir>/{upgrade-check/,upgrade-notes.yaml} -> <add-on dir>/
+          for src in .mirror/*/; do
+            [ -d "$src" ] || continue
+            addon=$(basename "$src")
+            if [ ! -d "$addon" ]; then
+              echo "::warning::.mirror/$addon/ has no add-on directory $addon/ upstream; not copied"
+              continue
+            fi
+            if [ -d "$src/upgrade-check" ]; then
+              rm -rf "$addon/upgrade-check"
+              cp -a "$src/upgrade-check" "$addon/upgrade-check"
+              echo "Copied .mirror/$addon/upgrade-check/ into $addon/"
+            fi
+            if [ -f "$src/upgrade-notes.yaml" ]; then
+              cp -a "$src/upgrade-notes.yaml" "$addon/upgrade-notes.yaml"
+              echo "Copied .mirror/$addon/upgrade-notes.yaml into $addon/"
+            fi
+          done
           # Patch image: fields
           python3 .mirror/patch-image.py
           # Refresh last-sync stamp
@@ -148,13 +192,68 @@ jobs:
           } > .mirror/last-sync.yaml
 
       - name: Commit & push main
+        id: push
         run: |
           git config user.email "woowtech-mirror-bot@designsmart.com.tw"
           git config user.name  "WOOWTECH Mirror Bot"
           git add -A
           if git diff --cached --quiet; then
             echo "No changes; skipping commit."
+            changed=false
           else
             git commit -m "[bot] mirror sync $(date -u +%Y-%m-%d) — ${UPSTREAM_URL##*/}@${UPSTREAM_BRANCH}"
+            changed=true
           fi
           git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+  # 1. Copy the pushed commit's images to GHCR before anything compares them.
+  # Scheduled runs go on only when the sync pushed a commit; a manual run always does.
+  image-mirror:
+    name: Image copy
+    needs: sync
+    if: needs.sync.outputs.sha != '' && (needs.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/image-mirror.yml
+    with:
+      sha: ${{ needs.sync.outputs.sha }}
+
+  # 2. Upgrade comparison (sha mode, Store #167): the add-on, when its version is not
+  # its latest formal Release's, is compared with that Release. Runs only after a
+  # successful image copy. Its output `passed` is the JSON array of the add-ons
+  # that passed; a failed add-on fails this job and so the run.
+  upgrade-comparison:
+    name: Upgrade comparison
+    needs: [sync, image-mirror]
+    permissions:
+      contents: read
+      actions: read
+    uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-upgrade-check.yml@main
+    with:
+      sha: ${{ needs.sync.outputs.sha }}
+
+  # 3. The App Store ships only formal Releases (registry ref_policy: release).
+  # Release the pushed commit only for the add-ons that passed (Store #168): the
+  # add-on gets its v<version> Release, with its upgrade-notes.yaml declarations
+  # in the notes. Never without a list: an empty `components` would release
+  # every add-on, so "" (the comparison did not run or gave no output) skips
+  # it, and so does [] (none passed).
+  release:
+    name: Release
+    needs: [sync, image-mirror, upgrade-comparison]
+    if: >-
+      ${{ !cancelled()
+      && needs.sync.result == 'success'
+      && needs.image-mirror.result == 'success'
+      && (needs.upgrade-comparison.result == 'success' || needs.upgrade-comparison.result == 'failure')
+      && needs.upgrade-comparison.outputs.passed != ''
+      && needs.upgrade-comparison.outputs.passed != '[]' }}
+    permissions:
+      contents: write
+    uses: WOOWTECH/Woow_HA_App_Store/.github/workflows/woow-addon-release.yml@main
+    with:
+      sha: ${{ needs.sync.outputs.sha }}
+      components: ${{ needs.upgrade-comparison.outputs.passed }}

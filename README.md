@@ -32,8 +32,10 @@ https://github.com/WOOWTECH/Woow_ha_frigate_add_on
 
 | Workflow | 排程 (UTC) | 做什麼 |
 |---|---|---|
-| `mirror-sync` | 03:17 每日 | 拉上游 → 更新 `upstream` 分支 → 依 `KEEP_SUBDIRS` 裁切 → 套 overlay → 改寫 `image:` → force-push `main` |
-| `image-mirror` | 04:47 每日 | 讀 `.mirror/image-map.json`，用 skopeo 把上游映像複製到 `ghcr.io/woowtech/ha-mirror-*` |
+| `mirror-sync` | 03:17 每日 | 拉上游 → 更新 `upstream` 快照分支 → 依 `KEEP_SUBDIRS` 裁切 → 套 overlay → 改寫 `image:` → 推 `main`（不 force-push）→ 呼叫 `image-mirror` → Store 的升版比對 → 通過才建立正式 Release `v<version>` |
+| `image-mirror` | 無（由 `mirror-sync` 呼叫，也可手動執行） | 讀 `.mirror/image-map.json`，用 skopeo 把上游映像複製到 `ghcr.io/woowtech/ha-mirror-*` |
+
+WoowTech HA App Store 只出貨本 repo 的正式 Release（pipeline #91、#172）。
 
 細節與 `KEEP_SUBDIRS` 的理由見 [`.mirror/README.md`](.mirror/README.md)。
 
