@@ -7,11 +7,11 @@
       "name": "Frigate",
       "version": "0.18.2",
       "repository": "WOOWTECH/Woow_ha_frigate_add_on",
-      "source_sha": "e30fd9927d29335239b27d97673e9843f8b33dfd",
+      "source_sha": "d16e4be3c6e0c3d8f64b8a687be13064d051cf9f",
       "source_path": "frigate",
       "config_file": "config.yaml",
       "config_sha256": "sha256:7f858da19657fd3e60f6b9e4f775295ec57cb4a1c4ff806aec630993e6f3c4e3",
-      "archive_sha256": "sha256:cdd01ddbe4678cb2b3e6705dbd76697bcaa84df6570f32653dd4e8d1cfae1fce",
+      "archive_sha256": "sha256:d1c8c7b9eb1127498d98e168f4b6bbe1c1196b7c2e3932491dca621cbf2f5095",
       "context_fingerprint": "sha256:c46ff16c63790fa1a7eb172cdeba90df03ff8044f6e302530aeeeadf5d7ae1d8",
       "material_fingerprint": "sha256:740c020ecb46f67b1926fae32dcbaaa3eacddf5f441f678036d188456510c2aa",
       "architectures": [
@@ -118,7 +118,7 @@
       },
       "delivery": "published-image",
       "validation": "manifest+architecture-images+configured-CI",
-      "publisher_run_id": "38879613284",
+      "publisher_run_id": "42555692508",
       "channel": "stable"
     }
   }
