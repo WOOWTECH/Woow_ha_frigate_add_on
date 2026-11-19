@@ -1,6 +1,6 @@
-last_sync: 2026-11-18T03:25:23Z
+last_sync: 2026-11-19T03:25:16Z
 upstream_url: https://github.com/blakeblackshear/frigate-hass-addons
 upstream_branch: main
-upstream_commit: b8349d682225db38e43263cd28fbdc39301ffd2e
+upstream_commit: c8f95c1df37195c59f25379bc1edcd86c1f75b80
 mirror_image_prefix: ghcr.io/woowtech/ha-mirror-
 keep_subdirs: frigate LICENSE
